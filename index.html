@@ -1,17 +1,96 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Civo Recite Live</title>
-</head>
-<body>
-    <h1>Civo Speech to Text - Managed Machine Learning Web Service</h1>
-    <button id="start-button">Start Recording</button>
-    <button id="stop-button">Stop Recording</button>
+  <head>
+    <style type="text/css">
+      #vu-meter {
+        width: 25rem;
+        height: 1rem;
+        background-color: white;
+        color: white;
+        border: 1px solid black;
+        margin-bottom: 2rem;
+      }
 
-    <div id="transcription-output"></div>
+      #audio-rms-level {
+        transition: all 0.05s;
+        width: 2rem;
+        background-color: #6cff37;
+        height: 1rem;
+      }
+    </style>
+    <!-- IIFE -->
+    <script src="node_modules/@picovoice/web-voice-processor/dist/iife/index.js"></script>
+    <script src="node_modules/wavefile/dist/wavefile.js"></script>
+    <script type="application/javascript">
+      let handle;
 
-    <script src="main.js"></script>
-</body>
+      document.addEventListener('DOMContentLoaded', function () {
+        console.log('DOMContentLoaded');
+        let vuBar = document.getElementById('audio-rms-level');
+
+        function vuMeterCallback(dB) {
+          const MIN_DB = -60;
+          let pct = (Math.max(dB, MIN_DB) * 100) / -MIN_DB + 100;
+
+          let cssPercentage = pct + '%';
+          vuBar.style.width = cssPercentage;
+        }
+
+        function writeMessage(message) {
+          console.log(message);
+          let p = document.createElement('p');
+          let text = document.createTextNode(message);
+          p.appendChild(text);
+          document.body.appendChild(p);
+        }
+
+        const vuMeterEngine = new WebVoiceProcessor.VuMeterEngine(vuMeterCallback);
+
+        document.getElementById('start-audio-dump').onclick = () => {
+          writeMessage('Recording in Progress ...');
+          let blobPromise = WebVoiceProcessor.WebVoiceProcessor.audioDump(10000);
+          WebVoiceProcessor.WebVoiceProcessor.subscribe(vuMeterEngine).catch(error => {
+            writeMessage('Error initializing WebVoiceProcessor: ' + error);
+          })
+          document.getElementById('start-audio-dump').disabled = true;
+          let downloadLink = document.getElementById('audio-download-link');
+          downloadLink.style.visibility = 'hidden';
+
+          blobPromise.then(blob => {
+            let wav = new wavefile.WaveFile()
+            blob.arrayBuffer().then(data => {
+              const dataInt16Array = new Int16Array(data)
+              wav.fromScratch(1, 16000, "16", dataInt16Array)
+              downloadLink.href = wav.toDataURI();
+              writeMessage(
+                      'Audio dump complete. Click to download the audio file.',
+              );
+              document.getElementById('start-audio-dump').disabled = true;
+
+              downloadLink.style.visibility = 'visible';
+            })
+          });
+        };
+
+        document.getElementById('stop').onclick = () => {
+          document.getElementById('stop').disabled = true;
+          writeMessage('Stopping ...');
+          WebVoiceProcessor.WebVoiceProcessor.unsubscribe(vuMeterEngine);
+          document.getElementById('start-audio-dump').disabled = true;
+        };
+      });
+    </script>
+  </head>
+  <title>Civo Recite Live</title>
+  <body>
+    <h1>Civo Recite Live</h1>
+    <div id="vu-meter">
+      <div id="audio-rms-level">&nbsp;</div>
+    </div>
+    <button id="start-audio-dump">Start Audio Dump (10s)</button>
+    <button id="stop">Stop Recording</button>
+    <a href="#" style="visibility: hidden" download="recorded.wav" id="audio-download-link">Download recorded audio</a>
+
+    </div>
+  </body>
 </html>
